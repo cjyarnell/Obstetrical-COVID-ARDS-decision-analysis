@@ -1,398 +1,258 @@
 # Script for analyzing TreeAge output in COVID OB ARDS project
-# run the function at the bottom first 
 
-#"BaseCase"
-#"Sensitivity_RR0.8"
-#"Sensitivity_RR1.25"
-#"Sensitivity_GA28"
-#"Sensitivity_GA30"
-#"Sensitivity_GA34"
-#"Sensitivity_FL0.02"
-#"Sensitivity_FL0.1"
+# colours
+c_light <- c("#DCBCBC")
+c_light_highlight <- c("#C79999")
+c_mid <- c("#B97C7C")
+c_mid_highlight <- c("#A25050")
+c_dark <- c("#8F2727")
+c_dark_highlight <- c("#7C0000")
 
-# run one at a time
- name <- "BaseCase"
+c_blue = "cornflower blue"
+c_lightblue = "cadetblue2"
 
- nMom <- 10000
- analyze_treeagecsv(name, nMom)
-
-# or do all of them at once with the following two commands:
-#nMom <- 10000
-#names <- list("BaseCase",
-#               "Sensitivity_RR0.7",
-#               "Sensitivity_RR1.4",
-#               "Sensitivity_GA28",
-#               "Sensitivity_GA30",
-#               "Sensitivity_GA34",
-#               "Sensitivity_FL0.01",
-#               "Sensitivity_FL0.1"
-# )
-# lapply(names, analyze_treeagecsv, nMom)
-
-analyze_treeagecsv <- function(filename, nMom){
+nMom  <- 1000
+nIter <- 1000
+names <- list("rr1.4",
+              "cs0.005",
+              "ga28",
+              "fl0.01",
+              "ards0.25",
+              "nnrr2",
+              "nnlts1.5",
+               "pmcs90",
+             "ga30",
+              "base",
+              "ga34",
+              "ards1",
+              "pmcs50",
+              "fl0.1",
+              "muno0.5",
+              "rr0.7"
+)
 
 library(tidyverse)
   # adjust for your appropriate working drive
 setwd("C:/Users/chris/Dropbox/Coursework/Decision Analysis/HAD5304 Project")
 
-df <- read.table(paste0(filename,".txt"), header = T)
+filenames <- sapply(names, paste0, ".txt")
+df_list <- lapply(filenames, read.table, header=T)
+names(df_list) <- names
+bigdf <- bind_rows(df_list,.id = "Case")
 
-# 0 = Csection, 1 = continue pregnancy
-id0 <- c(1, seq(from = 2, to = 79, by = 2))
-id1 <- c(1, seq(from = 3, to = 79, by = 2))
+keep <- grepl("ATTR", names(bigdf)) | names(bigdf) %in% c("Case","ITERATION")
 
-df0mom <- df[1:nMom,id0]
-df1mom <- df[1:nMom,id1]
+bigdf <- bigdf[,keep]
 
-df0baby <- df[(nMom+1):(2*nMom),id0]
-df1baby <- df[(nMom+1):(2*nMom),id1]
+# fix names
 
-# read in and combine with global matrices 
+names(bigdf) <- sub("STRATEGY_1", "ElectiveDelivery", names(bigdf))
+names(bigdf) <- sub("STRATEGY_2", "ExpectantManagement", names(bigdf))
 
-momdf3 <- as.data.frame(read.table(paste0(filename, "GlobalN3.txt"),
-                     skip = 4, 
-                     col.names = c("BabyID","BabyOutcomeDetermined",
-                                   "GA","fetalLoss")))
+names(bigdf) <- sub("ATTR_1_", "Mat_QALYs_", names(bigdf))
+names(bigdf) <- sub("ATTR_2", "Mat_LYs", names(bigdf))
+names(bigdf) <- sub("ATTR_3", "Mat_HospSurv", names(bigdf))
 
+names(bigdf) <- sub("ATTR_4", "NN_QALYs", names(bigdf))
+names(bigdf) <- sub("ATTR_5", "NN_LYs", names(bigdf))
+names(bigdf) <- sub("ATTR_6", "NN_HospSurv", names(bigdf))
 
-df0mom <- bind_cols(df0mom, momdf3[,c(1,4)])
+names(bigdf) <- sub("ATTR_7", "MatSurviveNNDeath", names(bigdf))
+names(bigdf) <- sub("ATTR_8", "BothSurvive", names(bigdf))
+names(bigdf) <- sub("ATTR_9", "BothSurviveTermBirth", names(bigdf))
 
-momdf7 <- as.data.frame(read.table(paste0(filename, "GlobalN7.txt"),
-                                skip = 4, 
-                                col.names = c("BabyID","BabyOutcomeDetermined",
-                                              "GA","fetalLoss")))
+names(bigdf) <- sub("ATTR_10", "Mat_HospitalLOS", names(bigdf))
+names(bigdf) <- sub("ATTR_11", "Mat_VentDuration", names(bigdf))
+names(bigdf) <- sub("ATTR_12", "Mat_LongTermComp", names(bigdf))
 
-df1mom <- bind_cols(df1mom, momdf7[,c(1,4)])
+names(bigdf) <- sub("ATTR_13", "FetalLoss", names(bigdf))
+names(bigdf) <- sub("ATTR_14", "NICU_Admit", names(bigdf))
+names(bigdf) <- sub("ATTR_15", "NICU_LOS", names(bigdf))
 
-babydf4 <- as.data.frame(read.table(paste0(filename, "GlobalN4.txt"),
-                                   skip = 4, 
-                                   col.names = c("MomID","MomAge","GA",
-                                                 "fetalLoss", "HospitalMort",
-                                                 "LongtermComplication")))
-
-
-df0baby <- bind_cols(df0baby, babydf4[(nMom+1):(2*nMom),c(1,3,4)])
-
-babydf8 <- as.data.frame(read.table(paste0(filename, "GlobalN8.txt"),
-                                   skip = 4,  
-                                   col.names = c("MomID","MomAge","GA",
-                                                 "fetalLoss", "HospitalMort",
-                                                 "LongtermComplication")))
-
-df1baby <- bind_cols(df1baby, babydf8[(nMom+1):(2*nMom),c(1,3,4)])
+names(bigdf) <- sub("ATTR_16", "NN_LongTermComp", names(bigdf))
+names(bigdf) <- sub("ATTR_17", "NN_COVID", names(bigdf))
+names(bigdf) <- sub("ATTR_18", "GA", names(bigdf))
 
 
+# pivot_long
 
-outcomes.mom <- function(df){
+bigdf <- bigdf %>%
+  pivot_longer(
+    cols = c(3:ncol(bigdf)),
+    names_to = c("Variable", "Strategy"),
+    names_pattern = "(.*)_(.*)"
+  ) %>%
+  mutate(Case = ordered(Case,
+                        levels = names
+                        , labels = c(
+                                  "Delivery worsens maternal outcome (RR 1.4)",
+                                     "Higher mortality rate of cesarean delivery (0.5% vs 0.1%)",
+                                   "GA 28 weeks",
+                                   "Fetal loss rate lower (1% vs 5%)",
+                                   "Lower ARDS mortality (7% vs 13%)",
+                                   "Preterm mortality risk higher (RR 2)",
+                                   "Long-term mortality risk of prematurity higher (HR 2)",
+                                   "Perimortem delivery survival higher (90% vs 75%)",
+                                    "GA 30 weeks",
+                                   "Base case*",
+                                   "GA 34 weeks",
+                                   "Fetal loss rate higher (10% vs 5%)",
+                                   "Perimortem delivery survival lower (50% vs 75%)",
+                                   "Higher ARDS mortality (24% vs 13%)",
+                                   "Lower maternal utility of neonatal outcomes (0.5 vs 0.95)",
+                                   "Delivery improves maternal outcome (RR 0.7)")))
 
-  n_outcomes = 9
-  temp <- data.frame(center = rep(NA, n_outcomes),
-                     lower = rep(NA, n_outcomes),
-                     upper = rep(NA, n_outcomes),
-                     string = rep(NA, n_outcomes))
-  
-  row.names(temp) <- c("HospitalLOS",
-                       "VentDuration",
-                       "LongtermComp",
-                       "HospMortality",
-                       "FetalLoss",
-                       "GA",
-                       "PropBirthWhileIMV",
-                       "LifeYears",
-                       "QALYs"
-  )
-  
-  temp[1,1:3] <- quantile(df[,26], prob = c(0.5,0.25,0.75))
-  temp[1,4] <- paste0(temp[1,1], " (", temp[1,2], " to ", temp[1,3], ")")
-  temp[2,1:3] <- quantile(df[,28], prob = c(0.5,0.25,0.75))
-  temp[2,4] <- paste0(temp[2,1], " (", temp[2,2], " to ", temp[2,3], ")")  
-  temp[3,1] <- mean(df[,32])
-  temp[3,4] <- round(temp[3,1],3)
-  temp[4,1] <- mean(df[,6])
-  temp[4,4] <- round(temp[4,1],3)
-  temp[5,1] <- mean(df[,21])
-  temp[5,4] <- round(temp[5,1],3)
-  temp[6,1:3] <- quantile(df[,23], prob = c(0.5,0.25,0.75))
-  temp[6,4] <- paste0(temp[6,1], " (", temp[6,2], " to ", temp[6,3], ")")  
-  temp[7,1] <- mean(df[,18]<=df[,28], prob = c(0.5,0.25,0.75))
-  temp[7,4] <- round(temp[7,1],3)
-  temp[8,4] <- round(c(mean(df[,5])),2)
-  temp[9,4] <- round(mean(df[,3]),2)
+diff <- bigdf %>%
+  group_by(Case, ITERATION, Variable) %>%
+  summarise(Difference = -diff(value)) %>%
+  group_by(Case, Variable) %>%
+  mutate(MeanDifference = mean(Difference))
 
-  temp[,4]
-  
-}
-outcomes.baby <- function(df){
-  
-  n_outcomes = 8
-  temp <- data.frame(center = rep(NA, n_outcomes),
-                     lower = rep(NA, n_outcomes),
-                     upper = rep(NA, n_outcomes),
-                     string = rep(NA, n_outcomes))
-  
-  row.names(temp) <- c("GAatbirth",
-                       "NICUadmit",
-                       "NICUlos",
-                       "NeonatalCOVID",
-                       "LongtermComp",
-                       "FetalNNmortality",
-                       "LifeYears",
-                       "QALYs")
-  
-  temp[1,1:3] <- quantile(df[,24], prob = c(0.5,0.25,0.75))
-  temp[1,4] <- paste0(temp[1,1], " (", temp[1,2], " to ", temp[1,3], ")")
-  temp[2,1] <- mean(df[,33]>0)
-  temp[2,4] <- round(temp[2,1],3)
-  temp[3,1:3] <- quantile(df[(df[,33]>0),33], prob = c(0.5,0.25,0.75))
-  temp[3,4] <- paste0(temp[3,1], " (", temp[3,2], " to ", temp[3,3], ")")  
-  temp[4,1] <- mean(df[,34])
-  temp[4,4] <- round(temp[4,1],3)
-  temp[5,1] <- mean(df[,32])
-  temp[5,4] <- round(temp[5,1],3)
-  temp[6,1] <- mean(df[,6])
-  temp[6,4] <- round(temp[6,1],3)
-  
-  temp[7,4] <- round(c(mean(df[,5])),2)
-  
-  temp[8,4] <- round(c(mean(df[,4])),2)
+df_mom_violin <- diff %>%
+  filter(grepl("QALYs", Variable)) %>%
+  filter(grepl("Delivery improves maternal", Case)|
+           grepl("Delivery worsens maternal",Case) |
+           grepl("Lower maternal utility", Case) |
+           grepl("weeks", Case)|
+           grepl("cesarean", Case)|
+           grepl("Base", Case))
 
-  temp[,4]
-  
-  }
-
-join_mombaby <- function(mom, baby){
-  mom <- mom[, c(1,41,3,5,6, 32, 42)]
-  baby <- baby[, c(1, 41, 4, 5, 6, 32, 33)]
-  names(mom)[1] <- "MomID"
-  names(baby)[1] <-"BabyID"
-  mombaby <- left_join(mom, baby, by = "MomID",
-                       suffix = c(".mom",".baby"))
-  names(mombaby) <- c("MomID",
-                      "BabyID",
-                      "QALYsMom",
-                      "LifeYearsMom",
-                      "HospDeathMom",
-                      "LongtermCompMom",
-                      "FetalLossMom",
-                      "BabyID2",
-                      "QALYsBaby",
-                      "LifeYearsBaby",
-                      "FetalNNMortality",
-                      "LongtermCompBaby",
-                      "NICULOS")
-  
-  mombaby
-}
-
-outcomes.mombaby <- function(df){
-  n_outcomes = 12
-  temp <- data.frame(center = rep(NA, n_outcomes),
-                     string = rep(NA, n_outcomes))
-  
-  row.names(temp) <- c("d_d",
-                       "d_s",
-                       "s_d",
-                       "s_s",
-                       "ltc_ltcp",
-                       "ltc_ncp",
-                       "ltc_ltct",
-                       "ltc_nct",
-                       "nc_ltcp",
-                       "nc_ncp",
-                       "nc_ltct",
-                       "nc_nct")
-  
-  temp[1,1] <- mean(df[,5] == 1 & df[,11] == 1)
-  temp[1,2] <- round(temp[1,1],3)
-  temp[2,1] <- mean(df[,5] == 1 & (df[,11] == 0))
-  temp[2,2] <- round(temp[2,1],3)
-  temp[3,1] <- mean(df[,5] == 0 & (df[,11] == 1))
-  temp[3,2] <- round(temp[3,1],3)
-  temp[4,1] <- mean(df[,5] == 0 & (df[,11] == 0))
-  temp[4,2] <- round(temp[4,1],3)
-  
-  temp[5,1] <- mean(df[,6] == 1 & df[,12] == 1 & df[,13] > 0)
-  temp[5,2] <- round(temp[5,1],3)
-  temp[6,1] <- mean(df[,6] == 1 & df[,12] == 0 & df[,13] > 0)
-  temp[6,2] <- round(temp[6,1],3)
-  temp[7,1] <- mean(df[,6] == 1 & df[,12] == 1 & (df[,13] == 0 & df[,11] == 0))
-  temp[7,2] <- round(temp[7,1],3)
-  temp[8,1] <- mean(df[,6] == 1 & df[,12] == 0 & df[,13] == 0 & df[,11] == 0)
-  temp[8,2] <- round(temp[8,1],3)
-  temp[9,1] <- mean(df[,6] == 0 & df[,12] == 1 & df[,13] > 0)
-  temp[9,2] <- round(temp[9,1],3)
-  temp[10,1] <- mean(df[,6] == 0 & df[,12] == 0 & df[,13] > 0)
-  temp[10,2] <- round(temp[10,1],3)
-  temp[11,1] <- mean(df[,6] == 0 & df[,12] == 1 & df[,13] == 0 & (df[,11] == 0))
-  temp[11,2] <- round(temp[11,1],3)
-  temp[12,1] <- mean(df[,6] == 0 & df[,12] == 0 & df[,13] == 0 & (df[,11] == 0))
-  temp[12,2] <- round(temp[12,1],3)
-  
-  temp[,2]
-}
+case_order <- filter(df_mom_violin, Variable == "Mat_QALYs") %>%
+  group_by(Case) %>%
+  summarise(MeanDifference = first(MeanDifference)) %>%
+  mutate(Rank = rank(MeanDifference)) %>%
+  arrange(Rank) %>%
+  select(-MeanDifference)
 
 
-outcomes.diff <- function(mom0,mom1, baby0, baby1, mombaby0, mombaby1){
-  
-  n_outcomes = 29
-  temp <- data.frame(value = rep(NA, n_outcomes))
-  
-  row.names(temp) <- c("HospitalLOS",
-                       "VentDuration",
-                       "MatLongtermComp",
-                       "HospMortality",
-                       "FetalLoss",
-                       "MatGA",
-                       "PropBirthWhileIMV",
-                       "MatLifeYears",
-                       "MatQALYs",
-                       "NNGAatbirth",
-                       "NICUadmit",
-                       "NICUlos",
-                       "NeonatalCOVID",
-                       "NNLongtermComp",
-                       "FetalNNmortality",
-                       "NNLifeYears",
-                       "NNQALYs",
-                       "d_d",
-                       "d_s",
-                       "s_d",
-                       "s_s",
-                       "ltc_ltcp",
-                       "ltc_ncp",
-                       "ltc_ltct",
-                       "ltc_nct",
-                       "nc_ltcp",
-                       "nc_ncp",
-                       "nc_ltct",
-                       "nc_nct")
 
-  temp[1,1] <- median(mom0[,26] - mom1[,26])
-  temp[2,1] <- median(mom0[,28]-mom1[,28])
-  temp[3,1] <- mean(mom0[,32]-mom1[,32])
-  temp[4,1] <- mean(mom0[,6]-mom1[,6])
-  temp[5,1] <- mean(mom0[,21]-mom1[,21])
-  temp[6,1] <- median(mom0[,23]-mom1[,23])
-  temp[7,1] <- mean(mom0[,18]<=mom0[,28])/mean(mom1[,18]<=mom1[,28])
-  temp[8,1] <- round(c(mean(mom0[,5]-mom1[,5])),2)
-  temp[9,1] <- round(c(mean(mom0[,3]-mom1[,3])),2)
-  
-  temp[10,1] <- median(baby0[,24]-baby1[,24])
-  temp[11,1] <- mean(baby0[,33]>0)/mean(baby1[,33]>0)
-  temp[12,1] <- median(baby0[(baby0[,33]>0),33])-median(baby1[(baby1[,33]>0),33])
-  temp[13,1] <- mean(baby0[,34] - baby1[,34])
-  temp[14,1] <- mean(baby0[,32] - baby1[,32])
-  temp[15,1] <- mean(baby0[,6]-baby1[,6])
-  temp[16,1] <- round(c(mean(baby0[,5]-baby1[,5])),2)
-  temp[17,1] <- round(c(mean(baby0[,4]-baby1[,5])),2)
-  
-  temp[18,1] <- mean(mombaby0[,5] == 1 & mombaby0[,11] == 1)- mean(mombaby1[,5] == 1 & mombaby1[,11] == 1)
-  temp[19,1] <- mean(mombaby0[,5] == 1 & (mombaby0[,11] == 0))- mean(mombaby1[,5] == 1 & (mombaby1[,11] == 0))
-  temp[20,1] <- mean(mombaby0[,5] == 0 & (mombaby0[,11] == 1))- mean(mombaby1[,5] == 0 & (mombaby1[,11] == 1))
-  temp[21,1] <- mean(mombaby0[,5] == 0 & (mombaby0[,11] == 0)) - mean(mombaby1[,5] == 0 & (mombaby1[,11] == 0))
-  temp[22,1] <- mean(mombaby0[,6] == 1 & mombaby0[,12] == 1 & mombaby0[,13] > 0) - 
-    mean(mombaby1[,6] == 1 & mombaby1[,12] == 1 & mombaby1[,13] > 0)
-  temp[23,1] <- mean(mombaby0[,6] == 1 & mombaby0[,12] == 0 & mombaby0[,13] > 0) -
-    mean(mombaby1[,6] == 1 & mombaby1[,12] == 0 & mombaby1[,13] > 0)
-  temp[24,1] <- mean(mombaby0[,6] == 1 & mombaby0[,12] == 1 & (mombaby0[,13] == 0 & mombaby0[,11] == 0)) - 
-    mean(mombaby1[,6] == 1 & mombaby1[,12] == 1 & (mombaby1[,13] == 0 & mombaby1[,11] == 0))
-  temp[25,1] <- mean(mombaby0[,6] == 1 & mombaby0[,12] == 0 & mombaby0[,13] == 0 & mombaby0[,11] == 0) - 
-    mean(mombaby1[,6] == 1 & mombaby1[,12] == 0 & mombaby1[,13] == 0 & mombaby1[,11] == 0)
-  temp[26,1] <- mean(mombaby0[,6] == 0 & mombaby0[,12] == 1 & mombaby0[,13] > 0) - 
-    mean(mombaby1[,6] == 0 & mombaby1[,12] == 1 & mombaby1[,13] > 0)
-  temp[27,1] <- mean(mombaby0[,6] == 0 & mombaby0[,12] == 0 & mombaby0[,13] > 0) - 
-    mean(mombaby1[,6] == 0 & mombaby1[,12] == 0 & mombaby1[,13] > 0)
-  temp[28,1] <- mean(mombaby0[,6] == 0 & mombaby0[,12] == 1 & mombaby0[,13] == 0 & (mombaby0[,11] == 0)) - 
-    mean(mombaby1[,6] == 0 & mombaby1[,12] == 1 & mombaby1[,13] == 0 & (mombaby1[,11] == 0))
-  temp[29,1] <- mean(mombaby0[,6] == 0 & mombaby0[,12] == 0 & mombaby0[,13] == 0 & (mombaby0[,11] == 0)) - 
-    mean(mombaby1[,6] == 0 & mombaby1[,12] == 0 & mombaby1[,13] == 0 & (mombaby1[,11] == 0))
-  
-  temp
-  
-}
+df_mom_violin <- df_mom_violin %>%
+  left_join(case_order, by = "Case")
 
-mombaby0 <- join_mombaby(df0mom, df0baby)
-mombaby1 <- join_mombaby(df1mom, df1baby)
-
-
-outcomes <- data.frame(Tx0 = c(outcomes.mom(df0mom),
-                               outcomes.baby(df0baby),
-                               outcomes.mombaby(mombaby0)),
-                       Tx1 = c(outcomes.mom(df1mom),
-                               outcomes.baby(df1baby),
-                               outcomes.mombaby(mombaby1)),
-                       Diff = outcomes.diff(df0mom,df1mom,
-                                            df0baby,df1baby,
-                                            mombaby0, mombaby1))
-
-write.csv(outcomes, file = paste0(filename, "output.csv"))
-
-temp0 <- df0mom[,c(1,2)]
-temp1 <- df1mom[,c(1,2)]
-names(temp0) <- c("patient_id", "QALYs")
-names(temp1) <- c("patient_id", "QALYs")
-momjoin <- bind_rows(temp0,temp1, .id = "strategy_id")
-
-temp0 <- df0baby[,c(1,4)]
-temp1 <- df1baby[,c(1,4)]
-names(temp0) <- c("patient_id", "QALYs")
-names(temp1) <- c("patient_id", "QALYs")
-babyjoin <- bind_rows(temp0,temp1, .id = "strategy_id")
-
-dfplot <- bind_rows(momjoin, babyjoin, .id = "mombaby_id") %>%
-  select(-patient_id) %>%
-  mutate(mombaby_id = factor(mombaby_id, labels = c("Mother","Baby")),
-         strategy_id = factor(strategy_id, labels = c("Elective delivery","Expectant management")))
-
-plot <- ggplot(data = dfplot,
-       aes(x = QALYs, fill = strategy_id)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(mombaby_id~., nrow = 2) +
+plot_mom_violin <- ggplot(df_mom_violin,
+       aes(x = reorder(Case,Rank), 
+           y = Difference,
+           fill = MeanDifference)) + 
+  geom_violin() + 
+  facet_grid(.~factor(Variable,
+                      levels = c("Mat_QALYs",
+                                 "NN_QALYs"),
+                      labels = c("",
+                                 " ")),
+             scales = "free_y") +
   theme_minimal() +
-  labs(x = "Quality-adjusted life years") +
-  theme(axis.text.y = element_blank(),
-        panel.grid = element_blank(),
-        legend.title = element_blank(),
-        legend.position = "bottom",
-        axis.title.y = element_blank(),
-        strip.text = element_blank()) +  
-  scale_fill_manual(values = c("black","white"))
+  scale_fill_gradient2(low = c_dark, mid = "white", high = c_blue,
+                       breaks = 0,labels = "",
+                       name = "") +
+  labs(y = "",
+       x = "") +
+  scale_y_continuous(breaks = c(-2,0,2),
+                     limits = c(-4,4)) +
+  coord_flip() +
+  theme(legend.position = "right",
+        plot.caption = element_text(hjust=0))
 
-ggsave(plot, filename = paste0(filename, ".svg"))
 
-plot2 <- ggplot(data = filter(dfplot, mombaby_id == "Mother"),
-                aes(x = QALYs, fill = strategy_id)) +
-  geom_density(alpha = 0.5) +
+ggsave(filename = "MatQALYsDiffByScenario.svg",
+       plot_mom_violin,
+       height = 6,
+       width = 8)
+
+df_baby_violin <- diff %>%
+  filter(grepl("QALYs", Variable)) %>%
+  filter(grepl("Fetal", Case)|
+           grepl("ARDS", Case) |
+           grepl("Long-term", Case)|
+           grepl("Preterm mortality risk higher", Case)|
+           grepl("Base", Case) |
+           grepl("delivery survival lower", Case))
+
+case_order <- filter(df_baby_violin, Variable == "NN_QALYs") %>%
+  group_by(Case) %>%
+  summarise(MeanDifference = first(MeanDifference)) %>%
+  mutate(Rank = rank(MeanDifference)) %>%
+  arrange(Rank) %>%
+  select(-MeanDifference)
+
+df_baby_violin <- df_baby_violin %>%
+  left_join(case_order, by = "Case")
+
+plot_baby_violin <- ggplot(df_baby_violin,
+                          aes(x = reorder(Case,Rank), 
+                              y = Difference,
+                              fill = MeanDifference)) + 
+  geom_violin() + 
+  facet_grid(.~factor(Variable,
+                      levels = c("Mat_QALYs",
+                                 "NN_QALYs"),
+                      labels = c("",
+                                 " ")),
+             scales = "free_y") +
   theme_minimal() +
-  labs(x = "Quality-adjusted life years") +  
-  theme(axis.text.y = element_blank(),
-        panel.grid = element_blank(),
-        legend.title = element_blank(),
-        legend.position = "bottom",
-        axis.title.y = element_blank(),
-        strip.text = element_blank()) +
-  scale_fill_manual(values = c("black","white"))
+  scale_fill_gradient2(low = c_dark, mid = "white", high = c_blue,
+                       breaks = 0,labels = "",
+                       name = "") +
+  labs(y = "",
+       x = "") +
+  scale_y_continuous(breaks = c(-2,0,2),
+                     limits = c(-4,4)) +
+  coord_flip() +
+  theme(legend.position = "right",
+        plot.caption = element_text(hjust=0))
 
-ggsave(plot2, filename = paste0(filename,"_onlyMom.svg"))
+ggsave(filename = "NNQALYsDiffByScenario.svg",
+       plot_baby_violin,
+       height = 6,
+       width = 8)
 
-plot3 <- ggplot(data = filter(dfplot,mombaby_id == "Baby"),
-                aes(x = QALYs, fill = strategy_id)) +
-  geom_density(alpha = 0.5) +
-  theme_minimal() +
-  labs(x = "Quality-adjusted life years") +
-  theme(axis.text.y = element_blank(),
-        panel.grid = element_blank(),
-        legend.title = element_blank(),
-        legend.position = "bottom",
-        axis.title.y = element_blank(),
-        strip.text = element_blank()) +
-  scale_fill_manual(values = c("black","white"))
 
-ggsave(plot3, filename = paste0(filename,"_onlyBaby.svg"))
+sumdf <- mutate(diff,
+               Strategy = "Difference",
+               value = Difference) %>%
+  select(Case, ITERATION, Variable, Strategy, value) %>%
+  bind_rows(bigdf) %>%
+  group_by(Case, Variable, Strategy) %>%
+  summarise(mean_raw = mean(value),
+            CI95lb = quantile(value, 0.025, na.rm=T),
+            CI95ub = quantile(value, 0.975, na.rm=T)) %>%
+  mutate(mean_raw = ifelse(grepl("LYs", Variable) | 
+                             grepl("Vent", Variable),round(mean_raw, 1),
+                           round(mean_raw,3)),
+         CI95lb = ifelse(grepl("LYs", Variable) | 
+                           grepl("Vent", Variable), round(CI95lb, 1),
+                           round(CI95lb,3)),
+         CI95ub = ifelse(grepl("LYs", Variable) | 
+                           grepl("Vent", Variable),round(CI95ub, 1),
+                         round(CI95ub,3))) %>%
+  mutate(Mean = paste0(mean_raw, " (",
+                         CI95lb, " to ",
+                         CI95ub, ")"),
+         Strategy = ordered(Strategy,
+                            levels = c("ElectiveDelivery",
+                                       "ExpectantManagement",
+                                       "Difference"),
+                            labels = c("Elective Delivery",
+                                       "Expectant Management",
+                                       "Difference")
+                            )) %>%
+  select(Case, Variable, Strategy, Mean) %>%
+  pivot_wider(names_from = Strategy,
+              values_from = Mean) %>%
+  select(Case, Variable, "Elective Delivery", "Expectant Management", Difference)
 
-print
+tbl2 <- filter(sumdf, 
+               Case == "Base case*") %>%
+  write_csv(file = "Tbl2.csv")
 
-}
-
+tbl3 <- filter(sumdf,
+               grepl("LongTerm",Variable) |
+               grepl("LYs", Variable) |
+               grepl("COVID",Variable) |
+               grepl("Surv", Variable)|
+               grepl("Both", Variable)) %>%
+  select(Case, Variable, Difference) %>%
+  pivot_wider(names_from = Case,
+              values_from = Difference) %>%
+  write_csv(file = "Tbl3.csv")
 
 
